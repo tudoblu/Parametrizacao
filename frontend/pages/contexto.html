@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Contexto Geológico</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <nav id="sidebar">
+  <div class="sidebar-header">
+    <img src="/static/Aflora.png" alt="Logo" id="sidebar-logo">
+    <h2>Análise de Fraturas</h2>
+    <p class="sidebar-sub">Embalse Cabra Corral · Salta, Argentina</p>
+  </div>
+  <ul class="nav-menu">
+    <li><a href="/app/index.html"                       class="nav-link">🏠 Início</a></li>
+    <li><a href="/app/pages/contexto.html"              class="nav-link active">🗺️ Contexto Geológico</a></li>
+    <li><a href="/app/pages/imagens_drones.html"        class="nav-link">🛸 Imagens Drones</a></li>
+    <li><a href="/app/pages/localizacao.html"           class="nav-link">📍 Localização</a></li>
+    <li><a href="/app/pages/distribuicao.html"          class="nav-link">📊 Distribuição Geral</a></li>
+    <li><a href="/app/pages/scanlines.html"             class="nav-link">📏 Scanlines</a></li>
+    <li><a href="/app/pages/estereogramas.html"         class="nav-link">🧭 Estereogramas</a></li>
+    <li><a href="/app/pages/p21.html"                   class="nav-link">📈 P21 por Camada</a></li>
+    <li><a href="/app/pages/aberturas.html"             class="nav-link">📐 Aberturas</a></li>
+    <li><a href="/app/pages/tamanhos.html"              class="nav-link">📏 Tamanhos</a></li>
+    <li><a href="/app/pages/espessuras.html"            class="nav-link">🔲 Espessuras</a></li>
+    <li><a href="/app/pages/espessura_espacamento.html" class="nav-link">⚖️ Esp. × Espaç.</a></li>
+  </ul>
+</nav>
+  <main id="content">
+    <h1>🗺️ Contexto Geológico do Afloramento</h1>
+    <p class="subtitle">Texto introdutório igual ao do Streamlit...</p>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="sel-img">Selecione a imagem:</label>
+        <select id="sel-img">
+          <option value="/static/mapas/MapaGeologico.png">Esquema Geológico Detalhado</option>
+          <option value="/static/mapas/ArcaboucoEstrutural.png">Arcabouço Estrutural</option>
+          <option value="/static/mapas/ModeloConceitual.png">Modelo Conceitual</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h2>Visualização</h2>
+      <img id="img-contexto" class="img-viewer" src="/static/mapas/MapaGeologico.png" alt="">
+    </div>
+
+    <a class="btn-download" href="/static/pdfs/Introducao EV 02347 Parametrizacao modelagem de fraturas - Salta .pdf" download>
+      📄 Baixar Introdução EV 02347 (PDF)
+    </a>
+    <!-- demais downloads... -->
+  </main>
+
+  <script>
+    const sel = document.getElementById('sel-img');
+    const img = document.getElementById('img-contexto');
+    sel.addEventListener('change', () => {
+      img.src = sel.value;
+    });
+  </script>
+</body>
+</html>
