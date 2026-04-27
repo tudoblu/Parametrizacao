@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Análise de Espessuras</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+<body>
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <img src="/static/Aflora.png" alt="Logo" id="sidebar-logo">
+      <h2>Análise de Fraturas</h2>
+      <p class="sidebar-sub">Embalse Cabra Corral · Salta, Argentina</p>
+    </div>
+    <ul class="nav-menu">
+      <li><a href="/app/index.html" class="nav-link">🏠 Início</a></li>
+      <li><a href="/app/pages/contexto.html" class="nav-link">🗺️ Contexto Geológico</a></li>
+      <li><a href="/app/pages/imagens_drones.html" class="nav-link">🛸 Imagens Drones</a></li>
+      <li><a href="/app/pages/localizacao.html" class="nav-link">📍 Localização</a></li>
+      <li><a href="/app/pages/distribuicao.html" class="nav-link">📊 Distribuição Geral</a></li>
+      <li><a href="/app/pages/scanlines.html" class="nav-link">📏 Scanlines</a></li>
+      <li><a href="/app/pages/estereogramas.html" class="nav-link">🧭 Estereogramas</a></li>
+      <li><a href="/app/pages/p21.html" class="nav-link">📈 P21 por Camada</a></li>
+      <li><a href="/app/pages/aberturas.html" class="nav-link">📐 Aberturas</a></li>
+      <li><a href="/app/pages/tamanhos.html" class="nav-link">📏 Tamanhos</a></li>
+      <li><a href="/app/pages/espessuras.html" class="nav-link active">🔲 Espessuras</a></li>
+      <li><a href="/app/pages/espessura_espacamento.html" class="nav-link">⚖️ Esp. × Espaç.</a></li>
+    </ul>
+  </nav>
+
+  <main id="content">
+    <div class="page-header">
+      <h1>🔲 Análise de Espessuras</h1>
+      <p class="subtitle">
+        Relação entre a espessura da camada e a abertura média dos veios confinados.
+      </p>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="sel-litofacies">Litofácies</label>
+        <select id="sel-litofacies"></select>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h2>Boxplot — Espessura da Camada vs. Abertura Média</h2>
+      <div id="chart-espessuras" class="chart-container">
+        <div class="loader"><div class="spinner"></div> Carregando...</div>
+      </div>
+    </div>
+
+    <a class="btn-download" href="/static/pdfs/Tratamento_Estatistico_Fraturas.pdf" download>
+      📄 Baixar Tratamento Estatístico de Fraturas (PDF)
+    </a>
+  </main>
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    async function carregarOpcoes() {
+      const res  = await fetch(`${API}/api/opcoes`);
+      const data = await res.json();
+
+      const sel = document.getElementById('sel-litofacies');
+      data.litofacies.forEach(l => {
+        const o = document.createElement('option');
+        o.value = o.textContent = l;
+        sel.appendChild(o);
+      });
+
+      sel.addEventListener('change', () => renderEspessuras(sel.value));
+      renderEspessuras(sel.value);
+    }
+
+    async function renderEspessuras(litofacies) {
+      document.getElementById('chart-espessuras').innerHTML =
+        '<div class="loader"><div class="spinner"></div> Carregando...</div>';
+
+      const url  = `${API}/api/espessura-abertura?litofacies=${encodeURIComponent(litofacies)}`;
+      const res  = await fetch(url);
+      const data = await res.json();
+
+      if (!data.dados || data.dados.length === 0) {
+        document.getElementById('chart-espessuras').innerHTML =
+          `<div class="loader" style="color:red">Sem dados para a litofácies selecionada.</div>`;
+        return;
+      }
+
+      // Boxplot usando os quartis calculados pelo backend
+      const traces = data.dados.map(d => ({
+        type: 'box',
+        name: `${d.espessura} cm`,
+        q1:     [d.q1],
+        median: [d.mediana],
+        q3:     [d.q3],
+        lowerfence: [d.min],
+        upperfence: [d.max],
+        x: [d.espessura],
+        orientation: 'v',
+        hovertemplate:
+          `<b>Espessura: ${d.espessura} cm</b><br>` +
+          `Q1: %{q1:.3f}<br>Mediana: %{median:.3f}<br>Q3: %{q3:.3f}<br>N: ${d.n}<extra></extra>`,
+        marker: { color: '#5fa8d3' },
+        line:   { color: '#2d6cbf' },
+      }));
+
+      const shapes = [{
+        type: 'rect',
+        x0: data.dados[0].espessura - 5,
+        x1: data.dados[data.dados.length - 1].espessura + 5,
+        y0: data.q_low,
+        y1: data.q_high,
+        fillcolor: 'orange',
+        opacity: 0.1,
+        line: { width: 0 },
+      }];
+
+      Plotly.newPlot('chart-espessuras', traces, {
+        shapes,
+        xaxis: { title: 'Espessura da Camada (cm)', type: 'category' },
+        yaxis: { title: 'Abertura Média (mm)' },
+        height: 500,
+        plot_bgcolor: '#fafafa',
+        paper_bgcolor: '#ffffff',
+        margin: { t: 20, r: 20, b: 80, l: 60 },
+        showlegend: false,
+      }, { responsive: true });
+    }
+
+    carregarOpcoes();
+  </script>
+</body>
+</html>
