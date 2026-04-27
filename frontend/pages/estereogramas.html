@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estereogramas - Dashboard Fraturas</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <nav id="sidebar">
+  <div class="sidebar-header">
+    <img src="/static/Aflora.png" alt="Logo" id="sidebar-logo">
+    <h2>Análise de Fraturas</h2>
+    <p class="sidebar-sub">Embalse Cabra Corral · Salta, Argentina</p>
+  </div>
+  <ul class="nav-menu">
+    <li><a href="/app/index.html"                       class="nav-link">🏠 Início</a></li>
+    <li><a href="/app/pages/contexto.html"              class="nav-link active">🗺️ Contexto Geológico</a></li>
+    <li><a href="/app/pages/imagens_drones.html"        class="nav-link">🛸 Imagens Drones</a></li>
+    <li><a href="/app/pages/localizacao.html"           class="nav-link">📍 Localização</a></li>
+    <li><a href="/app/pages/distribuicao.html"          class="nav-link">📊 Distribuição Geral</a></li>
+    <li><a href="/app/pages/scanlines.html"             class="nav-link">📏 Scanlines</a></li>
+    <li><a href="/app/pages/estereogramas.html"         class="nav-link">🧭 Estereogramas</a></li>
+    <li><a href="/app/pages/p21.html"                   class="nav-link">📈 P21 por Camada</a></li>
+    <li><a href="/app/pages/aberturas.html"             class="nav-link">📐 Aberturas</a></li>
+    <li><a href="/app/pages/tamanhos.html"              class="nav-link">📏 Tamanhos</a></li>
+    <li><a href="/app/pages/espessuras.html"            class="nav-link">🔲 Espessuras</a></li>
+    <li><a href="/app/pages/espessura_espacamento.html" class="nav-link">⚖️ Esp. × Espaç.</a></li>
+  </ul>
+</nav>
+
+  <main id="content">
+
+    <div class="page-header">
+      <h1>Estereogramas e Rosetas</h1>
+      <p class="subtitle">
+        Estereogramas dos dados de fraturas (Veios e Juntas) obtidos durante os trabalhos de campo.
+        O diagrama de rosetas indica a direcao das fraturas agrupadas a cada 10 graus.
+      </p>
+    </div>
+
+    <!-- Filtros -->
+    <div class="filter-bar" style="flex-wrap:wrap; gap:16px; align-items:flex-end;">
+
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label for="sel-afloramento">Afloramento:</label>
+        <select id="sel-afloramento" style="min-width:200px; padding:8px; border-radius:6px; border:1px solid #ccc;">
+          <option value="">Carregando...</option>
+        </select>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label for="sel-camada">Camada:</label>
+        <select id="sel-camada" style="min-width:220px; padding:8px; border-radius:6px; border:1px solid #ccc;">
+          <option value="Todas as Camadas">Todas as Camadas</option>
+        </select>
+      </div>
+
+      <button id="btn-gerar" class="btn-download">Gerar Estereograma</button>
+
+    </div>
+
+    <!-- Spinner -->
+    <div id="spinner" style="display:none; margin-top:20px; color:#555; font-size:1rem;">
+      Gerando estereograma, aguarde...
+    </div>
+
+    <!-- Mensagem -->
+    <p id="grafico-msg" style="display:none; color:#888; margin-top:20px;"></p>
+
+    <!-- Grafico -->
+    <div style="margin-top:24px; text-align:center;">
+      <img id="grafico-img" src="" alt="Estereograma"
+           style="display:none; max-width:100%; border-radius:8px;
+                  box-shadow:0 2px 12px rgba(0,0,0,0.15);">
+    </div>
+
+  </main>
+
+  <script>
+    // ==========================================================
+    // PASSO 1 — Carrega afloramentos (apenas de /api/opcoes)
+    // ==========================================================
+    async function carregarAfloramentos() {
+      const sel = document.getElementById('sel-afloramento');
+      try {
+        const resp  = await fetch('/api/opcoes');
+        const dados = await resp.json();
+
+        sel.innerHTML = '';
+        dados.afloramentos.forEach(afl => {
+          const opt       = document.createElement('option');
+          opt.value       = afl;
+          opt.textContent = afl;
+          sel.appendChild(opt);
+        });
+
+      } catch (e) {
+        sel.innerHTML = '<option value="Todos">Todos</option>';
+        console.error('Erro ao carregar afloramentos:', e);
+      }
+    }
+
+    // ==========================================================
+    // PASSO 2 — Carrega SOMENTE as camadas deste afloramento
+    //           usando /api/estereograma/camadas
+    // ==========================================================
+    async function carregarCamadas(afloramento) {
+      const sel      = document.getElementById('sel-camada');
+      sel.innerHTML  = '<option value="Todas as Camadas">Carregando...</option>';
+      sel.disabled   = true;
+
+      try {
+        const url   = '/api/estereograma/camadas?afloramento=' + encodeURIComponent(afloramento);
+        const resp  = await fetch(url);
+        const dados = await resp.json();
+
+        // Reconstrói o dropdown APENAS com as camadas retornadas
+        sel.innerHTML = '<option value="Todas as Camadas">Todas as Camadas</option>';
+
+        if (dados.camadas && dados.camadas.length > 0) {
+          dados.camadas.forEach(camada => {
+            const opt       = document.createElement('option');
+            opt.value       = camada;
+            opt.textContent = camada;
+            sel.appendChild(opt);
+          });
+        }
+
+      } catch (e) {
+        sel.innerHTML = '<option value="Todas as Camadas">Todas as Camadas</option>';
+        console.error('Erro ao carregar camadas:', e);
+      } finally {
+        sel.disabled = false;
+      }
+    }
+
+    // ==========================================================
+    // PASSO 3 — Gera o estereograma
+    // ==========================================================
+    async function gerarEstereograma() {
+      const afloramento = document.getElementById('sel-afloramento').value;
+      const camada      = document.getElementById('sel-camada').value || 'Todas as Camadas';
+
+      if (!afloramento) return;
+
+      const spinner = document.getElementById('spinner');
+      const img     = document.getElementById('grafico-img');
+      const msg     = document.getElementById('grafico-msg');
+
+      spinner.style.display = 'block';
+      img.style.display     = 'none';
+      msg.style.display     = 'none';
+
+      try {
+        const url   = '/api/estereograma'
+                    + '?afloramento=' + encodeURIComponent(afloramento)
+                    + '&camada='      + encodeURIComponent(camada);
+
+        const resp  = await fetch(url);
+        const dados = await resp.json();
+
+        if (dados.imagem) {
+          img.src           = 'data:image/png;base64,' + dados.imagem;
+          img.style.display = 'block';
+          msg.style.display = 'none';
+        } else {
+          msg.textContent   = dados.erro || 'Nenhum dado disponivel para a selecao atual.';
+          msg.style.display = 'block';
+        }
+
+      } catch (e) {
+        msg.textContent   = 'Erro ao gerar estereograma. Verifique o servidor.';
+        msg.style.display = 'block';
+        console.error(e);
+      } finally {
+        spinner.style.display = 'none';
+      }
+    }
+
+    // ==========================================================
+    // EVENTOS
+    // ==========================================================
+
+    // Quando muda o afloramento:
+    // 1. recarrega as camadas filtradas
+    // 2. gera o estereograma com "Todas as Camadas"
+    document.getElementById('sel-afloramento').addEventListener('change', async function () {
+      await carregarCamadas(this.value);
+      await gerarEstereograma();
+    });
+
+    // Quando muda a camada: gera automaticamente
+    document.getElementById('sel-camada').addEventListener('change', async function () {
+      await gerarEstereograma();
+    });
+
+    // Botao manual
+    document.getElementById('btn-gerar').addEventListener('click', gerarEstereograma);
+
+    // ==========================================================
+    // INICIALIZACAO — sequência garantida com await
+    // ==========================================================
+    (async function () {
+      await carregarAfloramentos();       // 1. preenche afloramentos
+      const afl = document.getElementById('sel-afloramento').value;
+      await carregarCamadas(afl);         // 2. preenche SÓ as camadas desse afloramento
+      await gerarEstereograma();          // 3. gera o gráfico inicial
+    })();
+  </script>
+
+</body>
+</html>
