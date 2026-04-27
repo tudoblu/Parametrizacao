@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Espessura × Espaçamento</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+<body>
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <img src="/static/Aflora.png" alt="Logo" id="sidebar-logo">
+      <h2>Análise de Fraturas</h2>
+      <p class="sidebar-sub">Embalse Cabra Corral · Salta, Argentina</p>
+    </div>
+    <ul class="nav-menu">
+      <li><a href="/app/index.html" class="nav-link">🏠 Início</a></li>
+      <li><a href="/app/pages/contexto.html" class="nav-link">🗺️ Contexto Geológico</a></li>
+      <li><a href="/app/pages/imagens_drones.html" class="nav-link">🛸 Imagens Drones</a></li>
+      <li><a href="/app/pages/localizacao.html" class="nav-link">📍 Localização</a></li>
+      <li><a href="/app/pages/distribuicao.html" class="nav-link">📊 Distribuição Geral</a></li>
+      <li><a href="/app/pages/scanlines.html" class="nav-link">📏 Scanlines</a></li>
+      <li><a href="/app/pages/estereogramas.html" class="nav-link">🧭 Estereogramas</a></li>
+      <li><a href="/app/pages/p21.html" class="nav-link">📈 P21 por Camada</a></li>
+      <li><a href="/app/pages/aberturas.html" class="nav-link">📐 Aberturas</a></li>
+      <li><a href="/app/pages/tamanhos.html" class="nav-link">📏 Tamanhos</a></li>
+      <li><a href="/app/pages/espessuras.html" class="nav-link">🔲 Espessuras</a></li>
+      <li><a href="/app/pages/espessura_espacamento.html" class="nav-link active">⚖️ Esp. × Espaç.</a></li>
+    </ul>
+  </nav>
+
+  <main id="content">
+    <div class="page-header">
+      <h1>⚖️ Espessura × Espaçamento</h1>
+      <p class="subtitle">
+        Relação entre espessura de camada e espaçamento de fraturas —
+        compilação e revisão de dados publicados (Ji 2002), com filtro por autor.
+      </p>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="sel-autor">Filtrar por autor</label>
+        <select id="sel-autor"></select>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h2>Espessura vs. Espaçamento (escala log-log)</h2>
+      <div id="chart-ji" class="chart-container">
+        <div class="loader"><div class="spinner"></div> Carregando...</div>
+      </div>
+    </div>
+
+    <div class="chart-card" id="card-refs" style="display:none">
+      <h2>📚 Referências Bibliográficas</h2>
+      <ol id="lista-refs" style="font-size:.875rem;line-height:1.8;"></ol>
+    </div>
+  </main>
+
+  <script>
+    const API = 'http://localhost:8000';
+    const MARCADORES = ['circle','square','diamond','triangle-up','triangle-down',
+                        'pentagon','hexagon','star','cross','x'];
+
+    async function carregarDados(autor) {
+      const res  = await fetch(`${API}/api/ji2002?autor=${encodeURIComponent(autor)}`);
+      return await res.json();
+    }
+
+    async function init() {
+      const data = await carregarDados('Todos os autores');
+
+      // Popula autores
+      const sel = document.getElementById('sel-autor');
+      ['Todos os autores', ...data.autores].forEach(a => {
+        const o = document.createElement('option');
+        o.value = o.textContent = a;
+        sel.appendChild(o);
+      });
+
+      sel.addEventListener('change', () => renderJi(sel.value));
+      renderJi('Todos os autores');
+      renderRefs(data.referencias);
+    }
+
+    async function renderJi(autor) {
+      document.getElementById('chart-ji').innerHTML =
+        '<div class="loader"><div class="spinner"></div> Carregando...</div>';
+
+      const data   = await carregarDados(autor);
+      const pontos = data.dados;
+
+      if (!pontos.length) {
+        document.getElementById('chart-ji').innerHTML =
+          '<div class="loader" style="color:red">Sem dados.</div>';
+        return;
+      }
+
+      // Agrupa por autor
+      const grupos = {};
+      pontos.forEach(p => {
+        if (!grupos[p.autor]) grupos[p.autor] = { x: [], y: [] };
+        grupos[p.autor].x.push(p.espessura);
+        grupos[p.autor].y.push(p.espacamento);
+      });
+
+      const traces = Object.entries(grupos).map(([nome, g], i) => ({
+        type: 'scatter',
+        mode: 'markers',
+        name: nome,
+        x: g.x,
+        y: g.y,
+        marker: { symbol: MARCADORES[i % MARCADORES.length], size: 8, opacity: 0.8 },
+        hovertemplate: `<b>${nome}</b><br>Esp: %{x:.1f} cm<br>Espaç: %{y:.1f} cm<extra></extra>`,
+      }));
+
+      // Tendência global (regressão log-log)
+      const allX = pontos.map(p => p.espessura).filter(v => v > 0);
+      const allY = pontos.map(p => p.espacamento).filter(v => v > 0);
+      if (allX.length > 1) {
+        const logX = allX.map(Math.log10);
+        const logY = allY.map(Math.log10);
+        const n    = logX.length;
+        const sx   = logX.reduce((a,b) => a+b, 0);
+        const sy   = logY.reduce((a,b) => a+b, 0);
+        const sxy  = logX.reduce((a, lx, i) => a + lx * logY[i], 0);
+        const sxx  = logX.reduce((a, lx) => a + lx * lx, 0);
+        const m    = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+        const b    = (sy - m * sx) / n;
+
+        const xLine = [Math.min(...allX), Math.max(...allX)];
+        const yLine = xLine.map(x => Math.pow(10, b + m * Math.log10(x)));
+
+        traces.push({
+          type: 'scatter',
+          mode: 'lines',
+          name: 'Tendência Global',
+          x: xLine,
+          y: yLine,
+          line: { color: 'black', dash: 'dash', width: 2 },
+          hovertemplate: `Tendência global<br>log(y) = ${m.toFixed(2)} log(x) + ${b.toFixed(2)}<extra></extra>`,
+        });
+      }
+
+      Plotly.newPlot('chart-ji', traces, {
+        xaxis: { type: 'log', title: 'Espessura (cm)', showgrid: true, gridcolor: '#ddd' },
+        yaxis: { type: 'log', title: 'Espaçamento (cm)', showgrid: true, gridcolor: '#ddd' },
+        height: 520,
+        plot_bgcolor: '#fafafa',
+        paper_bgcolor: '#ffffff',
+        margin: { t: 20, r: 20, b: 60, l: 70 },
+        legend: { x: 1.02, y: 1, font: { size: 11 } },
+      }, { responsive: true });
+
+      renderRefs(data.referencias);
+    }
+
+    function renderRefs(refs) {
+      if (!refs || !refs.length) return;
+      const card = document.getElementById('card-refs');
+      const lista = document.getElementById('lista-refs');
+      lista.innerHTML = refs.map(r => `<li>${r}</li>`).join('');
+      card.style.display = 'block';
+    }
+
+    init();
+  </script>
+</body>
+</html>
