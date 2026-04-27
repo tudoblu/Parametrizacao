@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>P21 por Camada</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+<body>
+<nav id="sidebar">
+  <div class="sidebar-header">
+    <img src="/static/Aflora.png" alt="Logo" id="sidebar-logo">
+    <h2>Análise de Fraturas</h2>
+    <p class="sidebar-sub">Embalse Cabra Corral · Salta, Argentina</p>
+  </div>
+  <ul class="nav-menu">
+    <li><a href="/app/index.html"                       class="nav-link">🏠 Início</a></li>
+    <li><a href="/app/pages/contexto.html"              class="nav-link active">🗺️ Contexto Geológico</a></li>
+    <li><a href="/app/pages/imagens_drones.html"        class="nav-link">🛸 Imagens Drones</a></li>
+    <li><a href="/app/pages/localizacao.html"           class="nav-link">📍 Localização</a></li>
+    <li><a href="/app/pages/distribuicao.html"          class="nav-link">📊 Distribuição Geral</a></li>
+    <li><a href="/app/pages/scanlines.html"             class="nav-link">📏 Scanlines</a></li>
+    <li><a href="/app/pages/estereogramas.html"         class="nav-link">🧭 Estereogramas</a></li>
+    <li><a href="/app/pages/p21.html"                   class="nav-link">📈 P21 por Camada</a></li>
+    <li><a href="/app/pages/aberturas.html"             class="nav-link">📐 Aberturas</a></li>
+    <li><a href="/app/pages/tamanhos.html"              class="nav-link">📏 Tamanhos</a></li>
+    <li><a href="/app/pages/espessuras.html"            class="nav-link">🔲 Espessuras</a></li>
+    <li><a href="/app/pages/espessura_espacamento.html" class="nav-link">⚖️ Esp. × Espaç.</a></li>
+  </ul>
+</nav>
+
+  <main id="content">
+    <div class="page-header">
+      <h1>📈 P21 por Camada</h1>
+      <p class="subtitle">
+        Cálculo da intensidade de fraturamento (P21) por afloramento e camada.
+      </p>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="sel-afloramento">Afloramento</label>
+        <select id="sel-afloramento"></select>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h2>P21 por Camada</h2>
+      <div id="chart-p21" class="chart-container">
+        <div class="loader"><div class="spinner"></div> Carregando...</div>
+      </div>
+    </div>
+
+    <a class="btn-download" href="/static/pdfs/Tratamento_Dados_UCS.pdf" download>
+      📄 Baixar Tratamento_Dados_UCS (PDF)
+    </a>
+  </main>
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    async function carregarOpcoes() {
+      const res = await fetch(`${API}/api/opcoes`);
+      const data = await res.json();
+      const sel = document.getElementById('sel-afloramento');
+      data.afloramentos
+        .filter(a => a !== 'Todos')
+        .forEach(a => {
+          const opt = document.createElement('option');
+          opt.value = opt.textContent = a;
+          sel.appendChild(opt);
+        });
+      sel.addEventListener('change', () => renderP21(sel.value));
+      renderP21(sel.value);
+    }
+
+    async function renderP21(afloramento) {
+      const div = document.getElementById('chart-p21');
+      div.innerHTML = '<div class="loader"><div class="spinner"></div> Carregando...</div>';
+
+      const res = await fetch(`${API}/api/p21?afloramento=${encodeURIComponent(afloramento)}`);
+      const data = await res.json();
+
+      const labels = data.map(d =>
+        d.espessura_media != null ? `${d.camada} (${d.espessura_media.toFixed(1)} cm)` : d.camada
+      );
+      const valores = data.map(d => d.p21);
+      const textos = data.map(d => d.p21 > 0 ? d.p21.toFixed(2) : '');
+
+      const trace = {
+        type: 'bar',
+        orientation: 'h',
+        x: valores,
+        y: labels,
+        text: textos,
+        textposition: 'inside',
+        insidetextanchor: 'middle',
+        marker: {
+          color: valores.map(v => v > 0 ? '#5fa8d3' : '#e2e8f0'),
+          line: { color: '#2d6cbf', width: 0.5 }
+        },
+        hovertemplate: '<b>%{y}</b><br>P21: %{x:.4f}<extra></extra>',
+      };
+
+      const layout = {
+        margin: { l: 220, r: 40, t: 20, b: 60 },
+        xaxis: { title: 'P21', zeroline: true },
+        yaxis: { automargin: true, tickfont: { size: 11 } },
+        height: Math.max(400, data.length * 28),
+        plot_bgcolor: '#fafafa',
+        paper_bgcolor: '#ffffff',
+      };
+
+      Plotly.newPlot('chart-p21', [trace], layout, { responsive: true });
+    }
+
+    carregarOpcoes();
+  </script>
+</body>
+</html>
