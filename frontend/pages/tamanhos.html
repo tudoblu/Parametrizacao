@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Análise de Tamanhos</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+<body>
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <img src="/static/Aflora.png" alt="Logo" id="sidebar-logo">
+      <h2>Análise de Fraturas</h2>
+      <p class="sidebar-sub">Embalse Cabra Corral · Salta, Argentina</p>
+    </div>
+    <ul class="nav-menu">
+      <li><a href="/app/index.html" class="nav-link">🏠 Início</a></li>
+      <li><a href="/app/pages/contexto.html" class="nav-link">🗺️ Contexto Geológico</a></li>
+      <li><a href="/app/pages/imagens_drones.html" class="nav-link">🛸 Imagens Drones</a></li>
+      <li><a href="/app/pages/localizacao.html" class="nav-link">📍 Localização</a></li>
+      <li><a href="/app/pages/distribuicao.html" class="nav-link">📊 Distribuição Geral</a></li>
+      <li><a href="/app/pages/scanlines.html" class="nav-link">📏 Scanlines</a></li>
+      <li><a href="/app/pages/estereogramas.html" class="nav-link">🧭 Estereogramas</a></li>
+      <li><a href="/app/pages/p21.html" class="nav-link">📈 P21 por Camada</a></li>
+      <li><a href="/app/pages/aberturas.html" class="nav-link">📐 Aberturas</a></li>
+      <li><a href="/app/pages/tamanhos.html" class="nav-link active">📏 Tamanhos</a></li>
+      <li><a href="/app/pages/espessuras.html" class="nav-link">🔲 Espessuras</a></li>
+      <li><a href="/app/pages/espessura_espacamento.html" class="nav-link">⚖️ Esp. × Espaç.</a></li>
+    </ul>
+  </nav>
+
+  <main id="content">
+    <div class="page-header">
+      <h1>📏 Análise de Tamanhos</h1>
+      <p class="subtitle">Distribuição da altura das estruturas (veios confinados) por litofácies e camada.</p>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="sel-litofacies">Litofácies</label>
+        <select id="sel-litofacies"></select>
+      </div>
+      <div class="control-group">
+        <label for="sel-camada">Camada</label>
+        <select id="sel-camada"></select>
+      </div>
+    </div>
+
+    <div class="stats-grid" id="stats-tamanhos"></div>
+
+    <div class="chart-card">
+      <h2>Histograma com KDE — Altura da Estrutura</h2>
+      <div id="chart-tamanhos" class="chart-container">
+        <div class="loader"><div class="spinner"></div> Carregando...</div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    async function carregarOpcoes() {
+      const res  = await fetch(`${API}/api/opcoes`);
+      const data = await res.json();
+
+      const selL = document.getElementById('sel-litofacies');
+      const selC = document.getElementById('sel-camada');
+
+      data.litofacies.forEach(l => {
+        const o = document.createElement('option');
+        o.value = o.textContent = l;
+        selL.appendChild(o);
+      });
+      data.camadas.forEach(c => {
+        const o = document.createElement('option');
+        o.value = o.textContent = c;
+        selC.appendChild(o);
+      });
+
+      const render = () => renderTamanhos(selL.value, selC.value);
+      selL.addEventListener('change', render);
+      selC.addEventListener('change', render);
+      render();
+    }
+
+    async function renderTamanhos(litofacies, camada) {
+      document.getElementById('chart-tamanhos').innerHTML =
+        '<div class="loader"><div class="spinner"></div> Carregando...</div>';
+
+      const url  = `${API}/api/tamanhos?litofacies=${encodeURIComponent(litofacies)}&camada=${encodeURIComponent(camada)}`;
+      const res  = await fetch(url);
+      const data = await res.json();
+
+      if (data.erro) {
+        document.getElementById('chart-tamanhos').innerHTML =
+          `<div class="loader" style="color:red">${data.erro}</div>`;
+        return;
+      }
+
+      const s = data.stats;
+      document.getElementById('stats-tamanhos').innerHTML = [
+        ['Média',        s.media?.toFixed(2),   'm'],
+        ['Mediana',      s.mediana?.toFixed(2),  'm'],
+        ['Moda',         s.moda?.toFixed(2),     'm'],
+        ['Desvio Padrão',s.std?.toFixed(2),      'm'],
+        ['Mínimo',       s.min?.toFixed(2),      'm'],
+        ['Máximo',       s.max?.toFixed(2),      'm'],
+        ['N',            s.n,                    ''],
+      ].map(([label, value, unit]) => `
+        <div class="stat-box">
+          <div class="stat-label">${label}</div>
+          <div class="stat-value">${value ?? '—'}</div>
+          ${unit ? `<div class="stat-unit">${unit}</div>` : ''}
+        </div>
+      `).join('');
+
+      const valores = data.valores;
+      const cores   = ['#1f77b4','#2ca02c','#ff7f0e','#d62728','#9467bd'];
+      const quantis = data.quantis;
+
+      const shapes = [{
+        type: 'rect',
+        x0: data.q_low, x1: data.q_high,
+        y0: 0, y1: 1, yref: 'paper',
+        fillcolor: 'yellow', opacity: 0.25,
+        line: { width: 0 },
+      }];
+
+      const annotations = [];
+      Object.entries(quantis).forEach(([key, val], i) => {
+        shapes.push({
+          type: 'line',
+          x0: val, x1: val, y0: 0, y1: 1, yref: 'paper',
+          line: { color: cores[i], dash: 'dash', width: 1.5 },
+        });
+        annotations.push({
+          x: val, y: 1, yref: 'paper',
+          text: `${key.toUpperCase()}: ${val.toFixed(2)}`,
+          showarrow: false, textangle: -90,
+          xanchor: 'right',
+          font: { size: 10, color: cores[i] },
+        });
+      });
+
+      Plotly.newPlot('chart-tamanhos', [{
+        type: 'histogram',
+        x: valores,
+        nbinsx: 100,
+        name: 'Frequência',
+        marker: { color: '#5fa8d3', opacity: 0.75 },
+        hovertemplate: 'Altura: %{x:.2f} m<br>Freq: %{y}<extra></extra>',
+      }], {
+        shapes, annotations,
+        xaxis: { title: 'Altura da Estrutura (m)' },
+        yaxis: { title: 'Frequência' },
+        height: 450,
+        plot_bgcolor: '#fafafa',
+        paper_bgcolor: '#ffffff',
+        margin: { t: 20, r: 20, b: 80, l: 60 },
+      }, { responsive: true });
+    }
+
+    carregarOpcoes();
+  </script>
+</body>
+</html>
