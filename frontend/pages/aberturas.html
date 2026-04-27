@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analise de Aberturas - Dashboard Fraturas</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <nav id="sidebar">
+  <div class="sidebar-header">
+    <img src="./static/Aflora.png" alt="Logo" id="sidebar-logo">
+    <h2>Análise de Fraturas</h2>
+    <p class="sidebar-sub">Embalse Cabra Corral · Salta, Argentina</p>
+  </div>
+  <ul class="nav-menu">
+    <li><a href="./index.html"                       class="nav-link">🏠 Início</a></li>
+    <li><a href="./pages/contexto.html"              class="nav-link active">🗺️ Contexto Geológico</a></li>
+    <li><a href="./pages/imagens_drones.html"        class="nav-link">🛸 Imagens Drones</a></li>
+    <li><a href="./pages/localizacao.html"           class="nav-link">📍 Localização</a></li>
+    <li><a href="./pages/distribuicao.html"          class="nav-link">📊 Distribuição Geral</a></li>
+    <li><a href="./pages/scanlines.html"             class="nav-link">📏 Scanlines</a></li>
+    <li><a href="./pages/estereogramas.html"         class="nav-link">🧭 Estereogramas</a></li>
+    <li><a href="./pages/p21.html"                   class="nav-link">📈 P21 por Camada</a></li>
+    <li><a href="./pages/aberturas.html"             class="nav-link">📐 Aberturas</a></li>
+    <li><a href="./pages/tamanhos.html"              class="nav-link">📏 Tamanhos</a></li>
+    <li><a href="./pages/espessuras.html"            class="nav-link">🔲 Espessuras</a></li>
+    <li><a href="./pages/espessura_espacamento.html" class="nav-link">⚖️ Esp. × Espaç.</a></li>
+  </ul>
+</nav>
+
+  <main id="content">
+
+    <div class="page-header">
+      <h1>Analise de Aberturas</h1>
+      <p class="subtitle">
+        Distribuicao estatistica da abertura media dos veios confinados,
+        filtrada por litofacies. Os dados de tratamento estatistico foram
+        realizados em scripts Python e os principais resultados sao
+        visualizados a seguir.
+      </p>
+    </div>
+
+    <!-- Filtro -->
+    <div class="filter-bar">
+      <label for="sel-litofacies">Selecione a Litofacies:</label>
+      <select id="sel-litofacies">
+        <option value="">Carregando...</option>
+      </select>
+      <button id="btn-gerar" class="btn-download" style="margin-left:12px;">
+        Gerar Grafico
+      </button>
+    </div>
+
+    <!-- Spinner -->
+    <div id="spinner" style="display:none; margin-top:20px; color:#555;">
+      Gerando grafico, aguarde...
+    </div>
+
+    <!-- Grafico -->
+    <div id="grafico-container" style="margin-top:24px; text-align:center;">
+      <img id="grafico-img" src="" alt="Grafico de Aberturas"
+           style="display:none; max-width:100%; border-radius:8px;
+                  box-shadow:0 2px 12px rgba(0,0,0,0.15);">
+      <p id="grafico-msg" style="color:#888;">
+        Selecione uma litofacies e clique em "Gerar Grafico".
+      </p>
+    </div>
+
+    <!-- Download PDF -->
+    <div style="margin-top:32px;">
+      <a href="./static/pdfs/Tratamento_Estatistico_Fraturas.pdf"
+         download class="btn-download">
+        Baixar Tratamento Estatistico Fraturas (PDF)
+      </a>
+    </div>
+
+  </main>
+
+  <script>
+    // ── Carrega lista de litofacies via /api/opcoes ────────────────────────
+    async function carregarLitofacies() {
+      try {
+        const resp = await fetch('/api/opcoes');
+        const dados = await resp.json();
+        const sel = document.getElementById('sel-litofacies');
+        sel.innerHTML = '';
+        dados.litofacies.forEach(lf => {
+          const opt = document.createElement('option');
+          opt.value = lf;
+          opt.textContent = lf;
+          sel.appendChild(opt);
+        });
+      } catch (e) {
+        document.getElementById('sel-litofacies').innerHTML =
+          '<option value="Todas as Litofacies">Todas as Litofacies</option>';
+        console.error('Erro ao carregar litofacies:', e);
+      }
+    }
+
+    // ── Gera o grafico chamando a API ──────────────────────────────────────
+    async function gerarGrafico() {
+      const litofacies = document.getElementById('sel-litofacies').value;
+      if (!litofacies) return;
+
+      const spinner = document.getElementById('spinner');
+      const img     = document.getElementById('grafico-img');
+      const msg     = document.getElementById('grafico-msg');
+
+      spinner.style.display = 'block';
+      img.style.display     = 'none';
+      msg.style.display     = 'none';
+
+      try {
+        const url  = '/api/aberturas/grafico?litofacies=' + encodeURIComponent(litofacies);
+        const resp = await fetch(url);
+        const dados = await resp.json();
+
+        if (dados.imagem) {
+          img.src           = 'data:image/png;base64,' + dados.imagem;
+          img.style.display = 'block';
+          msg.style.display = 'none';
+        } else {
+          msg.textContent   = 'Nenhum dado disponivel para a litofacies selecionada.';
+          msg.style.display = 'block';
+        }
+      } catch (e) {
+        msg.textContent   = 'Erro ao gerar grafico. Verifique o servidor.';
+        msg.style.display = 'block';
+        console.error(e);
+      } finally {
+        spinner.style.display = 'none';
+      }
+    }
+
+    // ── Eventos ────────────────────────────────────────────────────────────
+    document.getElementById('btn-gerar').addEventListener('click', gerarGrafico);
+
+    // Gera automaticamente ao mudar o dropdown
+    document.getElementById('sel-litofacies').addEventListener('change', gerarGrafico);
+
+    // ── Inicializa ─────────────────────────────────────────────────────────
+    carregarLitofacies().then(() => gerarGrafico());
+  </script>
+
+</body>
+</html>
