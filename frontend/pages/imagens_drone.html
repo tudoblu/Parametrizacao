@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Imagens Drones - Dashboard Fraturas</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <nav id="sidebar">
+  <div class="sidebar-header">
+    <img src="/static/Aflora.png" alt="Logo" id="sidebar-logo">
+    <h2>Análise de Fraturas</h2>
+    <p class="sidebar-sub">Embalse Cabra Corral · Salta, Argentina</p>
+  </div>
+  <ul class="nav-menu">
+    <li><a href="/app/index.html"                       class="nav-link">🏠 Início</a></li>
+    <li><a href="/app/pages/contexto.html"              class="nav-link active">🗺️ Contexto Geológico</a></li>
+    <li><a href="/app/pages/imagens_drones.html"        class="nav-link">🛸 Imagens Drones</a></li>
+    <li><a href="/app/pages/localizacao.html"           class="nav-link">📍 Localização</a></li>
+    <li><a href="/app/pages/distribuicao.html"          class="nav-link">📊 Distribuição Geral</a></li>
+    <li><a href="/app/pages/scanlines.html"             class="nav-link">📏 Scanlines</a></li>
+    <li><a href="/app/pages/estereogramas.html"         class="nav-link">🧭 Estereogramas</a></li>
+    <li><a href="/app/pages/p21.html"                   class="nav-link">📈 P21 por Camada</a></li>
+    <li><a href="/app/pages/aberturas.html"             class="nav-link">📐 Aberturas</a></li>
+    <li><a href="/app/pages/tamanhos.html"              class="nav-link">📏 Tamanhos</a></li>
+    <li><a href="/app/pages/espessuras.html"            class="nav-link">🔲 Espessuras</a></li>
+    <li><a href="/app/pages/espessura_espacamento.html" class="nav-link">⚖️ Esp. × Espaç.</a></li>
+  </ul>
+</nav>
+
+  <main id="content">
+
+    <div class="page-header">
+      <h1>Imagens de Drones por Afloramento</h1>
+      <p class="subtitle">
+        As imagens de drone sao aqui apresentadas com menor resolucao, apenas como referencia
+        geral da localizacao dos diferentes afloramentos e scanlines trabalhadas. Em sua maioria,
+        correspondem a levantamentos realizados pela Universidade Federal do Pampa (UNIPAMPA)
+        em convenio com a Petrobras, realizados em diferentes etapas e anos.
+      </p>
+    </div>
+
+    <!-- Dropdown de seleção -->
+    <div class="filter-bar">
+      <label for="sel-afloramento">Selecione o afloramento:</label>
+      <select id="sel-afloramento">
+        <option value="">Carregando...</option>
+      </select>
+    </div>
+
+    <!-- Imagem exibida -->
+    <div id="imagem-container" style="margin-top:24px; text-align:center;">
+      <p id="imagem-status" style="color:#888;">Selecione um afloramento para visualizar a imagem.</p>
+      <img id="imagem-drone" src="" alt=""
+           style="display:none; max-width:100%; border-radius:8px;
+                  box-shadow:0 2px 12px rgba(0,0,0,0.18);">
+      <p id="imagem-caption" style="color:#555; margin-top:8px; font-style:italic;"></p>
+    </div>
+
+    <!-- Texto descritivo -->
+    <div class="text-section" style="margin-top:32px;">
+      <p>
+        O pdf abaixo apresenta uma descricao detalhada de metodos (scanlines, UCS, estratigrafia
+        mecanica, geocronologia, imageamento a partir de interpretacao das imagens de drones,
+        atraves de um workflow elaborado no software SKUA/GOCAD). Resultados parciais, sobretudo:
+      </p>
+      <ul>
+        <li>base de dados de fraturas nas scanlines;</li>
+        <li>perfis de UCS;</li>
+        <li>modelos de afloramento por drone;</li>
+        <li>primeiros resultados geocronologicos.</li>
+      </ul>
+      <p>
+        As visualizacoes dos afloramentos aqui apresentadas buscam dar uma nocao mais geral do
+        tracado de cada scanline realizada no afloramento escolhido. No caso especifico do
+        afloramento Lomito, a visualizacao e mais deficitaria por corresponder ao afloramento com
+        maior dimensao lateral presente na area de trabalho. Porem, todos os afloramentos
+        encontram-se em processo de armazenamento como documentos (*.obj e *.mtl, projetos
+        Skua/Gocad) na Memoria Tecnica do PDIEP.
+      </p>
+      <p>
+        O arquivo compactado (Codigos_das_Macros_ppt.zip) contem macros para extracao e
+        tratamento de fraturas a partir de imagens de drones; corresponde a um fluxo completo,
+        com delimitacao de fraturas segundo planos definidos, com aplicacao direta para
+        modelagem de fraturas.
+      </p>
+    </div>
+
+    <!-- Botões de download -->
+    <div class="download-bar" style="margin-top:24px; display:flex; gap:16px; flex-wrap:wrap;">
+      <a href="/static/pdfs/Tratamento_Drones.pdf" download
+         class="btn-download">
+        Tratamento Drones (PDF)
+      </a>
+      <a href="/static/pdfs/Codigos_das_Macros_e_Python.zip" download
+         class="btn-download">
+        Codigos das Macros Skua/Gocad (ZIP)
+      </a>
+    </div>
+
+  </main>
+
+  <script>
+    // ── Carrega lista de afloramentos via API ──────────────────────────────
+    let imagensMap = {};
+
+    async function carregarAfloramentos() {
+      try {
+        const resp = await fetch('/api/imagens-drones');
+        imagensMap = await resp.json();
+
+        const sel = document.getElementById('sel-afloramento');
+        sel.innerHTML = '<option value="">-- Selecione --</option>';
+
+        Object.keys(imagensMap).forEach(nome => {
+          const opt = document.createElement('option');
+          opt.value = nome;
+          opt.textContent = nome;
+          sel.appendChild(opt);
+        });
+
+        // Seleciona o primeiro por padrão
+        if (Object.keys(imagensMap).length > 0) {
+          sel.value = Object.keys(imagensMap)[0];
+          exibirImagem(sel.value);
+        }
+
+      } catch (e) {
+        document.getElementById('imagem-status').textContent =
+          'Erro ao carregar lista de afloramentos.';
+        console.error(e);
+      }
+    }
+
+    // ── Exibe a imagem do afloramento selecionado ──────────────────────────
+    function exibirImagem(nome) {
+      const img    = document.getElementById('imagem-drone');
+      const status = document.getElementById('imagem-status');
+      const caption = document.getElementById('imagem-caption');
+
+      if (!nome || !imagensMap[nome]) {
+        img.style.display = 'none';
+        status.textContent = 'Selecione um afloramento.';
+        caption.textContent = '';
+        return;
+      }
+
+      // O caminho retornado pela API é relativo ao static, ex: "aflos_imagens/Vinuales.png"
+      // O FastAPI serve /static → ../static, então montamos o URL correto:
+      const caminho = '/static/' + imagensMap[nome];
+
+      status.textContent = '';
+      img.src = caminho;
+      img.alt = nome;
+      img.style.display = 'block';
+      caption.textContent = 'Visualizacao: ' + nome;
+    }
+
+    // ── Listener do dropdown ───────────────────────────────────────────────
+    document.getElementById('sel-afloramento').addEventListener('change', function() {
+      exibirImagem(this.value);
+    });
+
+    // ── Inicializa ─────────────────────────────────────────────────────────
+    carregarAfloramentos();
+  </script>
+
+</body>
+</html>
