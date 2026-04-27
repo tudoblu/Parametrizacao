@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visualização de Scanlines</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    #canvas-scanline {
+      width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: #fafafa;
+      display: block;
+    }
+    .legenda-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .legenda-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .85rem;
+    }
+    .legenda-cor {
+      width: 28px;
+      height: 4px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+    #loader-scan {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      color: #555;
+      margin: 12px 0;
+    }
+  </style>
+</head>
+<body>
+  <nav id="sidebar">
+  <div class="sidebar-header">
+    <img src="/static/Aflora.png" alt="Logo" id="sidebar-logo">
+    <h2>Análise de Fraturas</h2>
+    <p class="sidebar-sub">Embalse Cabra Corral · Salta, Argentina</p>
+  </div>
+  <ul class="nav-menu">
+    <li><a href="/app/index.html"                       class="nav-link">🏠 Início</a></li>
+    <li><a href="/app/pages/contexto.html"              class="nav-link active">🗺️ Contexto Geológico</a></li>
+    <li><a href="/app/pages/imagens_drones.html"        class="nav-link">🛸 Imagens Drones</a></li>
+    <li><a href="/app/pages/localizacao.html"           class="nav-link">📍 Localização</a></li>
+    <li><a href="/app/pages/distribuicao.html"          class="nav-link">📊 Distribuição Geral</a></li>
+    <li><a href="/app/pages/scanlines.html"             class="nav-link">📏 Scanlines</a></li>
+    <li><a href="/app/pages/estereogramas.html"         class="nav-link">🧭 Estereogramas</a></li>
+    <li><a href="/app/pages/p21.html"                   class="nav-link">📈 P21 por Camada</a></li>
+    <li><a href="/app/pages/aberturas.html"             class="nav-link">📐 Aberturas</a></li>
+    <li><a href="/app/pages/tamanhos.html"              class="nav-link">📏 Tamanhos</a></li>
+    <li><a href="/app/pages/espessuras.html"            class="nav-link">🔲 Espessuras</a></li>
+    <li><a href="/app/pages/espessura_espacamento.html" class="nav-link">⚖️ Esp. × Espaç.</a></li>
+  </ul>
+</nav>
+
+  <main id="content">
+    <div class="page-header">
+      <h1>Visualização de Scanlines</h1>
+      <p class="subtitle">
+        As scanlines foram realizadas em seções quase verticais e são mostradas como
+        projeção em mapa, preservando comprimentos medidos, espessura de camada
+        e classificação de subordinação.
+      </p>
+    </div>
+
+    <!-- Filtros -->
+    <div class="filter-bar" style="flex-wrap:wrap; gap:16px; align-items:flex-end;">
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label for="sel-afloramento">Afloramento:</label>
+        <select id="sel-afloramento"
+                style="min-width:200px; padding:8px; border-radius:6px; border:1px solid #ccc;">
+        </select>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label for="sel-camada">Camada:</label>
+        <select id="sel-camada"
+                style="min-width:220px; padding:8px; border-radius:6px; border:1px solid #ccc;">
+        </select>
+      </div>
+    </div>
+
+    <!-- Card do gráfico -->
+    <div class="chart-card" style="margin-top:24px;">
+      <h2 id="titulo-scanline" style="font-size:1rem; margin-bottom:8px;">Scanline</h2>
+      <div id="loader-scan">
+        <div class="spinner"></div> Carregando...
+      </div>
+      <canvas id="canvas-scanline" height="520"></canvas>
+      <div class="legenda-grid" id="legenda-scanline"></div>
+    </div>
+  </main>
+
+  <script>
+  // ── Paleta normalizada (tudo em minúsculas sem acentos) ──────────────────
+  const CORES_MAP = {
+    'nao subordinada':  'red',
+    'subordinada':      'blue',
+    'set3':             'green',
+    'set4':             'purple',
+    'nao observada':    'orange',
+    'set6':             'brown',
+    'set7':             'pink',
+    'set8':             'cyan',
+    'set9':             'magenta',
+    'set10':            'lime',
+    'nan':              'gray',
+  };
+
+  function corDaFratura(frat_set) {
+    if (!frat_set || frat_set === 'NaN') return 'gray';
+    const chave = frat_set
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    return CORES_MAP[chave] || 'gray';
+  }
+
+  // ── Carrega afloramentos ─────────────────────────────────────────────────
+  async function carregarAfloramentos() {
+    const res  = await fetch('/api/opcoes');
+    const data = await res.json();
+    const sel  = document.getElementById('sel-afloramento');
+    sel.innerHTML = '';
+    data.afloramentos
+      .filter(a => a !== 'Todos')
+      .forEach(a => {
+        const o = document.createElement('option');
+        o.value = o.textContent = a;
+        sel.appendChild(o);
+      });
+    sel.addEventListener('change', async () => {
+      await carregarCamadas(sel.value);
+    });
+    await carregarCamadas(sel.value);
+  }
+
+  // ── Carrega camadas filtradas ────────────────────────────────────────────
+  async function carregarCamadas(afloramento) {
+    const selC      = document.getElementById('sel-camada');
+    selC.innerHTML  = '<option>Carregando...</option>';
+    selC.disabled   = true;
+    try {
+      const res  = await fetch('/api/scanlines/camadas?afloramento=' + encodeURIComponent(afloramento));
+      const data = await res.json();
+      selC.innerHTML = '';
+      if (data.camadas && data.camadas.length > 0) {
+        data.camadas.forEach(c => {
+          const o = document.createElement('option');
+          o.value = o.textContent = c;
+          selC.appendChild(o);
+        });
+      } else {
+        selC.innerHTML = '<option value="">Sem camadas</option>';
+      }
+    } catch (e) {
+      selC.innerHTML = '<option value="">Erro ao carregar</option>';
+      console.error(e);
+    } finally {
+      selC.disabled = false;
+    }
+    selC.onchange = () => renderScanline(
+      document.getElementById('sel-afloramento').value,
+      selC.value
+    );
+    if (selC.options.length > 0 && selC.value) {
+      await renderScanline(afloramento, selC.value);
+    }
+  }
+
+  // ── Renderiza a scanline no canvas ───────────────────────────────────────
+  async function renderScanline(afloramento, camada) {
+    if (!afloramento || !camada) return;
+
+    const loader = document.getElementById('loader-scan');
+    const canvas = document.getElementById('canvas-scanline');
+    const ctx    = canvas.getContext('2d');
+    const legDiv = document.getElementById('legenda-scanline');
+
+    loader.style.display = 'flex';
+    legDiv.innerHTML     = '';
+
+    const cssW    = canvas.getBoundingClientRect().width || 900;
+    canvas.width  = cssW;
+    canvas.height = 520;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    try {
+      const url  = '/api/scanlines'
+                 + '?afloramento=' + encodeURIComponent(afloramento)
+                 + '&camada='      + encodeURIComponent(camada);
+      const res  = await fetch(url);
+      const data = await res.json();
+      loader.style.display = 'none';
+
+      if (data.erro) {
+        ctx.fillStyle = '#c00';
+        ctx.font      = '14px sans-serif';
+        ctx.fillText(data.erro, 20, 40);
+        return;
+      }
+
+      document.getElementById('titulo-scanline').textContent =
+        `Scanline — ${afloramento} | Camada: ${camada} | Surf Dir: ${data.surf_dir.toFixed(1)}°`;
+
+      // ── Geometria ─────────────────────────────────────────────────────
+      const surfDir = data.surf_dir;
+      const comp    = data.comprimento;
+      const scanRad = Math.PI / 2 - (surfDir * Math.PI / 180);
+
+      const x0 = 0, y0 = 0;
+      const x1 = x0 + comp * Math.cos(scanRad);
+      const y1 = y0 + comp * Math.sin(scanRad);
+
+      const nx = Math.cos(scanRad + Math.PI / 2);
+      const ny = Math.sin(scanRad + Math.PI / 2);
+      const esp = data.espessura_camada || 0;
+
+      // ── Bounding box ──────────────────────────────────────────────────
+      const pts = [[x0, y0], [x1, y1]];
+      if (esp > 0) {
+        const off = esp / 2;
+        pts.push([x0 + off * nx, y0 + off * ny]);
+        pts.push([x1 + off * nx, y1 + off * ny]);
+        pts.push([x0 - off * nx, y0 - off * ny]);
+        pts.push([x1 - off * nx, y1 - off * ny]);
+      }
+
+      let dist = 0;
+      for (const f of data.fraturas) {
+        const dip  = f.dip_dir;
+        const alt  = f.altura;
+        if (dip != null && alt != null && alt > 0) {
+          const px = x0 + dist * Math.cos(scanRad);
+          const py = y0 + dist * Math.sin(scanRad);
+          const strikeGeo = (dip + 90) % 360;
+          const dipRad    = Math.PI / 2 - (strikeGeo * Math.PI / 180);
+          const meio = alt / 2;
+          pts.push([px - meio * Math.cos(dipRad), py - meio * Math.sin(dipRad)]);
+          pts.push([px + meio * Math.cos(dipRad), py + meio * Math.sin(dipRad)]);
+        }
+        dist += f.espacamento || 0;
+      }
+
+      const xMin = Math.min(...pts.map(p => p[0]));
+      const xMax = Math.max(...pts.map(p => p[0]));
+      const yMin = Math.min(...pts.map(p => p[1]));
+      const yMax = Math.max(...pts.map(p => p[1]));
+
+      const dataW = xMax - xMin || 1;
+      const dataH = yMax - yMin || 1;
+
+      const PAD    = 60;
+      const W      = canvas.width;
+      const H      = canvas.height;
+      const scaleX = (W - 2 * PAD) / dataW;
+      const scaleY = (H - 2 * PAD) / dataH;
+      const scale  = Math.min(scaleX, scaleY);
+
+      const offsetX = PAD + (W - 2 * PAD - dataW * scale) / 2 - xMin * scale;
+      const offsetY = PAD + (H - 2 * PAD - dataH * scale) / 2 - yMin * scale;
+
+      function tx(x) { return offsetX + x * scale; }
+      function ty(y) { return H - (offsetY + y * scale); }
+
+      // ── Bordas da camada ──────────────────────────────────────────────
+      if (esp > 0) {
+        const off = esp / 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = 'green';
+        ctx.lineWidth   = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(tx(x0 + off * nx), ty(y0 + off * ny));
+        ctx.lineTo(tx(x1 + off * nx), ty(y1 + off * ny));
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(tx(x0 - off * nx), ty(y0 - off * ny));
+        ctx.lineTo(tx(x1 - off * nx), ty(y1 - off * ny));
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // ── Linha da scanline ─────────────────────────────────────────────
+      ctx.strokeStyle = '#1a3a5c';
+      ctx.lineWidth   = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(tx(x0), ty(y0));
+      ctx.lineTo(tx(x1), ty(y1));
+      ctx.stroke();
+
+      // ── Fraturas ──────────────────────────────────────────────────────
+      const tiposVistos = new Map();
+      dist = 0;
+
+      for (const f of data.fraturas) {
+        const dip   = f.dip_dir;
+        const alt   = f.altura;
+        const set   = f.frat_set || 'NaN';
+        const espac = f.espacamento || 0;
+
+        if (dip != null && alt != null && alt > 0) {
+          const px = x0 + dist * Math.cos(scanRad);
+          const py = y0 + dist * Math.sin(scanRad);
+
+          const strikeGeo = (dip + 90) % 360;
+          const dipRad    = Math.PI / 2 - (strikeGeo * Math.PI / 180);
+          const meio = alt / 2;
+
+          // ← usa a função normalizada
+          const cor = corDaFratura(set);
+          if (!tiposVistos.has(set)) tiposVistos.set(set, cor);
+
+          ctx.strokeStyle = cor;
+          ctx.lineWidth   = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(
+            tx(px - meio * Math.cos(dipRad)),
+            ty(py - meio * Math.sin(dipRad))
+          );
+          ctx.lineTo(
+            tx(px + meio * Math.cos(dipRad)),
+            ty(py + meio * Math.sin(dipRad))
+          );
+          ctx.stroke();
+        }
+        dist += espac;
+      }
+
+      // ── Legenda ───────────────────────────────────────────────────────
+      tiposVistos.forEach((cor, tipo) => {
+        const item = document.createElement('div');
+        item.className = 'legenda-item';
+        item.innerHTML =
+          `<div class="legenda-cor" style="background:${cor}"></div>
+           <span>${tipo}</span>`;
+        legDiv.appendChild(item);
+      });
+
+    } catch (e) {
+      loader.style.display = 'none';
+      ctx.fillStyle = '#c00';
+      ctx.font      = '14px sans-serif';
+      ctx.fillText('Erro ao carregar dados. Verifique o servidor.', 20, 40);
+      console.error(e);
+    }
+  }
+
+  carregarAfloramentos();
+</script>
+
+</body>
+</html>
